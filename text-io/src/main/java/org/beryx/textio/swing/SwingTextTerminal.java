@@ -25,10 +25,7 @@ import javax.swing.*;
 import javax.swing.text.*;
 import java.awt.*;
 import java.awt.Color;
-import java.awt.event.ActionEvent;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
-import java.awt.event.WindowListener;
+import java.awt.event.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -61,6 +58,7 @@ public class SwingTextTerminal extends AbstractTextTerminal<SwingTextTerminal> {
     private final JFrame frame;
     private final JTextPane textPane;
     private final JScrollPane scrollPane;
+    private final TrayIcon trayIcon;
 
     private String unmaskedInput = "";
     private String savedUnmaskedInput = "";
@@ -216,7 +214,7 @@ public class SwingTextTerminal extends AbstractTextTerminal<SwingTextTerminal> {
         }
     }
 
-    public SwingTextTerminal() {
+    public SwingTextTerminal() throws IOException {
         TerminalProperties<SwingTextTerminal> props = getProperties();
 
         props.addStringListener(PROP_USER_INTERRUPT_KEY, null, (term, newVal) -> setUserInterruptKey(newVal));
@@ -228,6 +226,7 @@ public class SwingTextTerminal extends AbstractTextTerminal<SwingTextTerminal> {
         props.addStringListener(PROP_PANE_ICON_URL, null, (term, newVal) -> setPaneIconUrl(newVal));
         props.addStringListener(PROP_PANE_ICON_FILE, null, (term, newVal) -> setPaneIconFile(newVal));
         props.addStringListener(PROP_PANE_ICON_RESOURCE, null, (term, newVal) -> setPaneIconResource(newVal));
+        props.addStringListener(PROP_TRAY_ICON_FILE, null, (term, newVal) -> setPaneIconTray(newVal));
 
         props.addStringListener(PROP_PROMPT_COLOR, null, (term, newVal) -> setPromptColor(newVal));
         props.addStringListener(PROP_PROMPT_BGCOLOR, null, (term, newVal) -> setPromptBackgroundColor(newVal));
@@ -251,6 +250,8 @@ public class SwingTextTerminal extends AbstractTextTerminal<SwingTextTerminal> {
 
         frame = new JFrame("Text Terminal");
         textPane = new JTextPane();
+        trayIcon = new TrayIcon(ImageIO.read(new File(props.getString(PROP_TRAY_ICON_FILE))));
+
 
         textPane.setBackground(DEFAULT_PANE_BACKGROUND);
         promptStyleData.color = DEFAULT_PROMPT_COLOR;
@@ -276,6 +277,38 @@ public class SwingTextTerminal extends AbstractTextTerminal<SwingTextTerminal> {
             }
         };
         frame.addWindowListener(exitListener);
+
+        if (SystemTray.isSupported()) {
+            SystemTray tray = SystemTray.getSystemTray();
+            ActionListener listener = new ActionListener() {
+                public void actionPerformed(ActionEvent e) {
+                    frame.setVisible(true);
+                    tray.remove(trayIcon);
+                }
+            };
+            trayIcon.setImageAutoSize(true);
+            trayIcon.addActionListener(listener);
+            try {
+                tray.add(trayIcon);
+            } catch (Exception e) {
+                System.err.println(e);
+            }
+
+            frame.addWindowStateListener(e -> {
+                if (e.getNewState() == JFrame.ICONIFIED) {
+                    frame.setVisible(false);
+                    if (SystemTray.isSupported()) {
+                        try {
+                            tray.add(trayIcon);
+                        } catch (AWTException ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    }
+                }
+            });
+
+            frame.setVisible(true);
+        }
 
         frame.add(scrollPane);
         frame.pack();
@@ -757,6 +790,14 @@ public class SwingTextTerminal extends AbstractTextTerminal<SwingTextTerminal> {
             } catch (IOException e) {
                 logger.warn("Cannot set icon from resource " + res, e);
             }
+        }
+    }
+
+    private void setPaneIconTray(String filePath) {
+        try {
+            trayIcon.setImage(ImageIO.read(new File(filePath)));
+        } catch (IOException e) {
+            logger.warn("Cannot set icon from file: {}", filePath, e);
         }
     }
 

@@ -1,0 +1,39 @@
+name: TextIO CI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build application
+        run: ./gradlew text-io:jar
+
+      - name: Generate Changelog
+        id: changelog
+        uses: requarks/changelog-action@v1
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          tag: ${{ github.ref_name }}
+
+      - name: Generate Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: text-io/libs/*jar
+          body: ${{ steps.changelog.outputs.changes }}
+          token: ${{ secrets.GH_TOKEN }}
